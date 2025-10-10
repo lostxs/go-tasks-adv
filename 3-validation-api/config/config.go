@@ -27,7 +27,7 @@ func Load() *Config {
 		Mail: MailConfig{
 			Email:    os.Getenv("SMTP_EMAIL"),
 			Password: os.Getenv("SMTP_PASSWORD"),
-			Host:     os.Getenv("SMTP_Host"),
+			Host:     os.Getenv("SMTP_HOST"),
 		},
 	}
 

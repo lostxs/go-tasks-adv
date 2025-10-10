@@ -55,7 +55,11 @@ func (handler *VerifyHandler) Send() http.HandlerFunc {
 			return
 		}
 
-		hash := generateHash(body.Email)
+		hash, err := generateHash(body.Email)
+		if err != nil {
+			response.Json(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 
 		err = handler.sendVerificationEmail(body.Email, hash)
 		if err != nil {
@@ -86,14 +90,15 @@ func (handler *VerifyHandler) Verify() http.HandlerFunc {
 			return u.Hash == s
 		})
 		if existing == nil {
-			err := handler.userRepo.DeleteOne(hash, func(u user.User, s string) bool {
-				return u.Hash == s
-			})
-			if err != nil {
-				response.Json(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
 			response.Json(w, false, http.StatusNotFound)
+			return
+		}
+
+		err := handler.userRepo.DeleteOne(hash, func(u user.User, s string) bool {
+			return u.Hash == s
+		})
+		if err != nil {
+			response.Json(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
@@ -116,9 +121,12 @@ func (handler *VerifyHandler) sendVerificationEmail(toEmail, hash string) error 
 	return e.Send(handler.config.Host+":587", auth)
 }
 
-func generateHash(email string) string {
+func generateHash(email string) (string, error) {
 	b := make([]byte, 16)
-	rand.Read(b)
+	_, err := rand.Read(b)
+	if err != nil {
+		return "", err
+	}
 	h := sha256.Sum256(append([]byte(email), b...))
-	return hex.EncodeToString(h[:])
+	return hex.EncodeToString(h[:]), nil
 }

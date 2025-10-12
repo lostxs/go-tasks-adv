@@ -42,9 +42,7 @@ func (s *Service) VerifyCode(sessionID, code string) (string, error) {
 		return "", ErrInvalidCode
 	}
 
-	token, err := s.jwt.GenerateToken(map[string]any{
-		"phone": existingSession.Phone,
-	})
+	token, err := s.jwt.GenerateToken(existingSession.Phone)
 	if err != nil {
 		return "", err
 	}

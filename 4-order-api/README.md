@@ -67,3 +67,8 @@ type Product struct {
 
 
 Authorization: Bearer <token>
+
+12 - Контекст
+Полученный JWT нужно использовать middleware для авторизации, которая будет использоваться для покупки товара.
+
+Нужно сделать middleware

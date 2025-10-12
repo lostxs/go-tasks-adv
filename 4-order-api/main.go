@@ -29,6 +29,7 @@ func main() {
 	})
 	auth.NewHandler(router, auth.HandlerDeps{
 		Service: authService,
+		JWT:     jwt,
 	})
 
 	server := http.Server{

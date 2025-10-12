@@ -4,15 +4,17 @@ import (
 	"4-order-api/config"
 	"4-order-api/internal/product"
 	"4-order-api/pkg/db"
-	"fmt"
-	"log"
+	"4-order-api/pkg/middleware"
 	"net/http"
+
+	"github.com/sirupsen/logrus"
 )
 
 func main() {
 	config := config.Load()
 	db := db.NewDB(config.DB)
 	router := http.NewServeMux()
+	logrus.SetFormatter(&logrus.JSONFormatter{})
 
 	proudctRepo := product.NewRepository(db)
 
@@ -22,9 +24,9 @@ func main() {
 
 	server := http.Server{
 		Addr:    ":8080",
-		Handler: router,
+		Handler: middleware.Logging(router),
 	}
 
-	fmt.Println("Server listening on port 8080")
-	log.Fatal(server.ListenAndServe())
+	logrus.Info("Starting server on :8080")
+	server.ListenAndServe()
 }

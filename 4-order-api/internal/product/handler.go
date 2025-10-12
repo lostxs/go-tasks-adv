@@ -10,16 +10,16 @@ import (
 )
 
 type HandlerDeps struct {
-	Repo *Repository
+	ProductRepository *Repository
 }
 
 type Handler struct {
-	repo *Repository
+	productRepository *Repository
 }
 
 func NewHandler(router *http.ServeMux, deps HandlerDeps) {
 	hander := &Handler{
-		repo: deps.Repo,
+		productRepository: deps.ProductRepository,
 	}
 
 	router.HandleFunc("POST /product", hander.Create())
@@ -34,8 +34,12 @@ func (h *Handler) Create() http.HandlerFunc {
 		if err != nil {
 			return
 		}
-		product := NewProduct(body.Name, body.Description, body.Images)
-		createdProuct, err := h.repo.Create(product)
+		createdProuct, err := h.productRepository.Create(&Product{
+			Name:        body.Name,
+			Description: body.Description,
+			Images:      body.Images,
+			Price:       body.Price,
+		})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 			return
@@ -52,7 +56,7 @@ func (h *Handler) Get() http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		product, err := h.repo.GetByID(uint(id))
+		product, err := h.productRepository.GetByID(uint(id))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
@@ -73,16 +77,17 @@ func (h *Handler) Update() http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		_, err = h.repo.GetByID(uint(id))
+		_, err = h.productRepository.GetByID(uint(id))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-		updatedProduct, err := h.repo.Update(&Product{
+		updatedProduct, err := h.productRepository.Update(&Product{
 			Model:       gorm.Model{ID: uint(id)},
 			Name:        body.Name,
 			Description: body.Description,
 			Images:      body.Images,
+			Price:       body.Price,
 		})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -100,7 +105,7 @@ func (h *Handler) Delete() http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		err = h.repo.Delete(uint(id))
+		err = h.productRepository.Delete(uint(id))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

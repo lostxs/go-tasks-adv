@@ -1,53 +1,48 @@
 package jwt
 
 import (
-	"errors"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
 
+type Payload struct {
+	UserID uint   `json:"user_id"`
+	Phone  string `json:"phone"`
+	jwt.RegisteredClaims
+}
+
 type JWT struct {
 	secret string
 }
 
-type Claims struct {
-	Phone string `json:"phone"`
-	jwt.RegisteredClaims
-}
-
 func NewJWT(secret string) *JWT {
-	return &JWT{secret: secret}
+	j := &JWT{secret: secret}
+	return j
 }
 
-func (j *JWT) GenerateToken(phone string) (string, error) {
-	claims := Claims{
-		Phone: phone,
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-		},
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+func (j *JWT) GenerateToken(payload Payload) (string, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"user_id": payload.UserID,
+		"phone":   payload.Phone,
+		"exp":     time.Now().Add(24 * time.Hour).Unix(),
+	})
 	return token.SignedString([]byte(j.secret))
 }
 
-func (j *JWT) VerifyToken(tokenStr string) (*Claims, error) {
-	token, err := jwt.ParseWithClaims(tokenStr, &Claims{}, func(token *jwt.Token) (any, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, errors.New("invalid signing method")
-		}
+func (j *JWT) ParseToken(tokenStr string) (*Payload, error) {
+	token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
 		return []byte(j.secret), nil
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	claims, ok := token.Claims.(*Claims)
-	if !ok || !token.Valid {
-		return nil, errors.New("invalid or expired token")
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		return &Payload{
+			UserID: uint(claims["user_id"].(float64)),
+			Phone:  claims["phone"].(string),
+		}, nil
 	}
-
-	return claims, nil
+	return nil, err
 }

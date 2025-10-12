@@ -1,48 +1,39 @@
 package middleware
 
 import (
+	"4-order-api/pkg/jwt"
 	"context"
 	"net/http"
 	"strings"
-
-	"4-order-api/pkg/jwt"
 )
 
-type contextKey string
+type userKey struct{}
 
-const userKey = contextKey("user")
-
-func jwtAuthFailed(w http.ResponseWriter) {
-	w.WriteHeader(http.StatusUnauthorized)
-	w.Write([]byte(http.StatusText(http.StatusUnauthorized)))
+type JWTAuthMiddleware struct {
+	jwt *jwt.JWT
 }
 
-func JWTAuth(jwt *jwt.JWT, next http.Handler) http.Handler {
+func NewJWTAuthMiddleware(jwt *jwt.JWT) *JWTAuthMiddleware {
+	return &JWTAuthMiddleware{jwt: jwt}
+}
+
+func (m *JWTAuthMiddleware) Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authedHeader := r.Header.Get("Authorization")
-		if !strings.HasPrefix(authedHeader, "Bearer ") {
-			jwtAuthFailed(w)
-			return
-		}
-		token := strings.TrimPrefix(authedHeader, "Bearer ")
-
-		claims, err := jwt.VerifyToken(token)
+		tokenStr := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		claims, err := m.jwt.ParseToken(tokenStr)
 		if err != nil {
-			jwtAuthFailed(w)
+			http.Error(w, "invalid token", http.StatusUnauthorized)
 			return
 		}
-
-		ctx := context.WithValue(r.Context(), userKey, claims)
+		ctx := context.WithValue(r.Context(), userKey{}, claims)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
-func GetUser(ctx context.Context) *jwt.Claims {
-	if ctx == nil {
+func (m *JWTAuthMiddleware) GetUser(ctx context.Context) *jwt.Payload {
+	claims, ok := ctx.Value(userKey{}).(*jwt.Payload)
+	if !ok {
 		return nil
 	}
-	if claims, ok := ctx.Value(userKey).(*jwt.Claims); ok {
-		return claims
-	}
-	return nil
+	return claims
 }

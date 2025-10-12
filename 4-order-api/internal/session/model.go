@@ -1,4 +1,4 @@
-package auth
+package session
 
 import (
 	"crypto/rand"
@@ -16,12 +16,13 @@ type Session struct {
 }
 
 func NewSession(phone string) *Session {
-	return &Session{
+	session := &Session{
 		ID:        generateID(),
 		Phone:     phone,
 		Code:      generateCode(),
 		ExpiresAt: time.Now().Add(5 * time.Minute),
 	}
+	return session
 }
 
 func generateID() string {

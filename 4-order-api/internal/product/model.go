@@ -10,12 +10,5 @@ type Product struct {
 	Name        string
 	Description string
 	Images      pq.StringArray `gorm:"type:text[]"`
-}
-
-func NewProduct(name, desc string, images []string) *Product {
-	return &Product{
-		Name:        name,
-		Description: desc,
-		Images:      images,
-	}
+	Price       float64
 }

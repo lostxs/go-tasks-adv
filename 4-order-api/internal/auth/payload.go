@@ -1,10 +1,12 @@
 package auth
 
-type SendCodeRequest struct {
-	Phone string `json:"phone" validate:"required"`
+type RegisterRequest struct {
+	Number string `json:"number"`
 }
-
-type VerifyCodeRequest struct {
-	SessionID string `json:"sessionId" validate:"required"`
-	Code      string `json:"code" validate:"required"`
+type VerifyRequest struct {
+	SessionID string `json:"sessionid"`
+	Code      string `json:"code"`
+}
+type VerifyResponse struct {
+	Token string `json:"token"`
 }

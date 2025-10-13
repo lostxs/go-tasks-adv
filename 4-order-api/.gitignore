@@ -1,0 +1,5 @@
+*.env
+*.yaml
+postgres-data/
+*.json
+*.txt

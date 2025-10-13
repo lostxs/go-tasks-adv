@@ -1,20 +1,20 @@
 package db
 
 import (
-	"4-order-api/config"
+	"4-order-api/configs"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
-type DB struct {
+type Db struct {
 	*gorm.DB
 }
 
-func NewDB(config config.DBConfig) *DB {
-	db, err := gorm.Open(postgres.Open(config.Dsn), &gorm.Config{})
+func NewDb(conf *configs.Config) *Db {
+	db, err := gorm.Open(postgres.Open(conf.Db.Dsn), &gorm.Config{})
 	if err != nil {
 		panic(err)
 	}
-	return &DB{db}
+	return &Db{db}
 }

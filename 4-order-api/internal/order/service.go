@@ -1,54 +1,45 @@
 package order
 
 import (
-	"4-order-api/internal/product"
+	"4-order-api/internal/models"
+	"4-order-api/pkg/di"
+	"errors"
+	"fmt"
 )
 
-type ServiceDeps struct {
-	OrderRepository   *Repository
-	ProductRepository *product.Repository
+type OrderService struct {
+	UserRepository    di.IUserRepository
+	ProductRepository di.IProductRepository
 }
 
-type Service struct {
-	orderRepository   *Repository
-	productRepository *product.Repository
-}
-
-func NewService(deps ServiceDeps) *Service {
-	return &Service{
-		orderRepository:   deps.OrderRepository,
-		productRepository: deps.ProductRepository,
+func NewOrderService(UserRepository di.IUserRepository, ProductRepository di.IProductRepository) *OrderService {
+	return &OrderService{
+		UserRepository:    UserRepository,
+		ProductRepository: ProductRepository,
 	}
 }
+func (service *OrderService) CreateOrderServ(productsResp []QuantProductID, userID uint, phoneNumber string) ([]*models.Product, error) {
+	dbUser, err := service.UserRepository.FindUserByNum(phoneNumber)
+	if err != nil || dbUser == nil {
 
-func (s *Service) Create(userID, productId uint, quantity int) (*Order, error) {
-	var orderItems []OrderItem
+		return nil, errors.New("ошибка поиска номера телефона")
+	}
+	fmt.Printf("DBUser %d\n", dbUser.ID)
+	fmt.Printf("UserId %d\n", userID)
+	if dbUser.ID != userID {
 
-	p, err := s.productRepository.GetByID(productId)
+		return nil, errors.New("пользователь не найден")
+	}
+	productIDs := make([]uint, len(productsResp))
+	for i, p := range productsResp {
+		productIDs[i] = p.ProductID
+	}
+
+	products, err := service.ProductRepository.FindProductArrayById(productIDs)
 	if err != nil {
-		return nil, err
+
+		return nil, errors.New("ошибка поиска продукта")
 	}
+	return products, nil
 
-	orderItems = append(orderItems, OrderItem{
-		ProductID: p.ID,
-		Price:     p.Price,
-		Quantity:  quantity,
-	})
-
-	order := &Order{
-		UserID: userID,
-		Status: StatusCreated,
-		Total:  p.Price * float64(quantity),
-		Items:  orderItems,
-	}
-
-	return s.orderRepository.Create(order)
-}
-
-func (s *Service) GetByID(id uint) (*Order, error) {
-	return s.orderRepository.GetByID(id)
-}
-
-func (s *Service) GetByUser(userID uint) ([]Order, error) {
-	return s.orderRepository.GetByUserID(userID)
 }

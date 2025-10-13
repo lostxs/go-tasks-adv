@@ -1,63 +1,95 @@
 package auth
 
 import (
-	"4-order-api/pkg/request"
-	"4-order-api/pkg/response"
-	"errors"
+	"4-order-api/configs"
+	jwte "4-order-api/pkg/JWTE"
+	"4-order-api/pkg/req"
+	"4-order-api/pkg/resp"
 	"net/http"
 )
 
-type HandlerDeps struct {
-	AuthService *Service
+type AuthHandlerDeps struct {
+	*configs.Config
+	*AuthService
+}
+type AuthHandler struct {
+	*configs.Config
+	*AuthService
 }
 
-type Handler struct {
-	authService *Service
+func NewAuthHandler(router *http.ServeMux, deps AuthHandlerDeps) {
+	handler := &AuthHandler{
+		Config:      deps.Config,
+		AuthService: deps.AuthService,
+	}
+	router.HandleFunc("POST /auth", handler.register)
+	router.HandleFunc("POST /auth/verify", handler.verify)
 }
+func (handler *AuthHandler) register(w http.ResponseWriter, request *http.Request) {
 
-func NewHandler(router *http.ServeMux, deps HandlerDeps) {
-	h := &Handler{
-		authService: deps.AuthService,
+	// получаем тело запроса
+	body, err := req.HandleBody[RegisterRequest](w, request)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
-	router.HandleFunc("POST /auth/send", h.SendCode())
-	router.HandleFunc("POST /auth/verify", h.VerifyCode())
-}
+	findUser, _ := handler.AuthService.UserRepository.FindUserByNum(body.Number)
+	if findUser == nil {
+		user, _ := handler.AuthService.Register(body.Number)
+		resp.Json(w, user, 201)
 
-func (h *Handler) SendCode() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		body, err := request.ParseBody[SendCodeRequest](w, r)
+	} else {
+
+		userWithNewSession, err := handler.AuthService.Update(findUser)
 		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-
-		sessionID, err := h.authService.SendCode(body.Phone)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		response.WriteJSON(w, http.StatusCreated, sessionID)
+		resp.Json(w, userWithNewSession, 200)
 	}
+
+	//запрашиваем код подтверждения
+	// проверяем sesiodID и код
+	//выдаем токен
 }
+func (handler *AuthHandler) verify(w http.ResponseWriter, request *http.Request) {
+	body, err := req.HandleBody[VerifyRequest](w, request)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	findUser, err := handler.AuthService.UserRepository.FindUserBySession(body.SessionID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if body.SessionID == "" || body.Code == "" {
+		http.Error(w, "Сессия или код истекли", http.StatusBadRequest)
+		return
+	}
+	if findUser.SessionID == body.SessionID && findUser.Code == body.Code {
 
-func (h *Handler) VerifyCode() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		body, err := request.ParseBody[VerifyCodeRequest](w, r)
+		//выдаем токен
+		secret, err := jwte.NewJWT(handler.Auth.Secret).Create(jwte.JWTData{
+			Number:    findUser.Number,
+			SessionId: body.SessionID,
+		})
 		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		data := VerifyResponse{
+			Token: secret,
+		}
+		resp.Json(w, data, 200)
 
-		token, err := h.authService.VerifyCode(body.SessionID, body.Code)
+	} else {
+		_, err := handler.AuthService.UpdateCode(findUser, body.Code)
 		if err != nil {
-			if errors.Is(err, ErrSessionNotFound) || errors.Is(err, ErrInvalidCode) {
-				response.WriteJSON(w, http.StatusUnauthorized, err.Error())
-			} else {
-				response.WriteJSON(w, http.StatusInternalServerError, err.Error())
-			}
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-
-		response.WriteJSON(w, http.StatusCreated, token)
+		resp.Json(w, "Неверный код, Код отправлен", 200)
 	}
 }

@@ -1,80 +1,51 @@
 package auth
 
 import (
-	"4-order-api/internal/session"
+	"4-order-api/internal/models"
 	"4-order-api/internal/user"
-	"4-order-api/pkg/jwt"
+	"4-order-api/pkg/rand"
 	"errors"
-	"fmt"
-	"time"
-
-	"gorm.io/gorm"
 )
 
-type ServiceDeps struct {
-	SessionRepository *session.Repository
-	UserRepository    *user.Repository
-	Jwt               *jwt.JWT
+type AuthService struct {
+	UserRepository *user.UserRepository
 }
 
-type Service struct {
-	sessionRepository *session.Repository
-	userRepository    *user.Repository
-	jwt               *jwt.JWT
-}
-
-func NewService(deps ServiceDeps) *Service {
-	return &Service{
-		sessionRepository: deps.SessionRepository,
-		userRepository:    deps.UserRepository,
-		jwt:               deps.Jwt,
+func NewAuthRepository(userRepository *user.UserRepository) *AuthService {
+	return &AuthService{
+		UserRepository: userRepository,
 	}
 }
 
-func (s *Service) SendCode(phone string) (string, error) {
-	session := session.NewSession(phone)
-	_, err := s.sessionRepository.Create(session)
+func (service *AuthService) Register(number string) (*models.User, error) {
+	// идем в БД проверям на наличие номер
+
+	//если нет то генерим sesionID и выдаем иначе генерим новый
+
+	user := &models.User{
+		Number:    number,
+		SessionID: rand.RandSession(),
+	}
+	createdUser, err := service.UserRepository.CreateUser(user)
 	if err != nil {
-		return "", err
+		return nil, errors.New("ошибка создания пользователя")
 	}
-
-	fmt.Printf("SMS sent to %s: code=%s\n", phone, session.Code)
-	return session.ID, nil
+	return createdUser, nil
 }
+func (service *AuthService) Update(user *models.User) (*models.User, error) {
 
-func (s *Service) VerifyCode(sessionID, code string) (string, error) {
-	session, _ := s.sessionRepository.FindByID(sessionID)
-	if session == nil {
-		return "", ErrSessionNotFound
-	}
+	user.SessionID = rand.RandSession()
 
-	if time.Now().After(session.ExpiresAt) {
-		return "", ErrSessionExpired
-	}
-
-	if session.Code != code {
-		return "", ErrInvalidCode
-	}
-
-	u, err := s.userRepository.FindByPhone(session.Phone)
+	updateUser, err := service.UserRepository.UpdateSessionId(user)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			u, err = s.userRepository.Create(&user.User{Phone: session.Phone})
-			if err != nil {
-				return "", err
-			}
-		} else {
-			return "", err
-		}
+		return nil, errors.New("ошибка обновления пользователя")
 	}
-
-	token, err := s.jwt.GenerateToken(jwt.Payload{
-		UserID: u.ID,
-		Phone:  u.Phone,
-	})
+	return updateUser, nil
+}
+func (service *AuthService) UpdateCode(user *models.User, code string) (*models.User, error) {
+	updateUser, err := service.UserRepository.UpdateCode(user, code)
 	if err != nil {
-		return "", err
+		return nil, errors.New("ошибка обновления пользователя")
 	}
-
-	return token, nil
+	return updateUser, nil
 }

@@ -1,110 +1,121 @@
 package product
 
 import (
-	"4-order-api/pkg/request"
-	"4-order-api/pkg/response"
+	"4-order-api/configs"
+	"4-order-api/internal/models"
+	"4-order-api/pkg/middleware"
+	"4-order-api/pkg/req"
+	"4-order-api/pkg/resp"
+	"fmt"
 	"net/http"
 	"strconv"
 
 	"gorm.io/gorm"
 )
 
-type HandlerDeps struct {
-	Repo *Repository
+type ProductHandDeps struct {
+	ProductRepository *ProductRepository
+	*configs.Config
+}
+type ProductHandler struct {
+	ProductRepository *ProductRepository
 }
 
-type Handler struct {
-	repo *Repository
+func NewProductHandler(router *http.ServeMux, product *ProductHandDeps) {
+	handler := &ProductHandler{
+		ProductRepository: product.ProductRepository,
+	}
+	router.HandleFunc("POST /prod/create", handler.create)
+
+	router.HandleFunc("PATCH /prod/update/{id}", handler.update)
+	router.HandleFunc("DELETE /prod/delete/{id}", handler.delete)
+	router.HandleFunc("GET /prod/{id}", middleware.Auth(handler.getById, product.Config))
+	router.HandleFunc("GET /all", middleware.Auth(handler.getAllProduct, product.Config))
+}
+func (handler *ProductHandler) create(w http.ResponseWriter, request *http.Request) {
+	body, err := req.HandleBody[ProductCreate](w, request)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	product := models.NewProduct(body.Name, body.Description, body.Images, body.Quantity)
+	createProd, err := handler.ProductRepository.Create(product)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+
+	}
+	resp.Json(w, createProd, 201)
+
+}
+func (handler *ProductHandler) update(w http.ResponseWriter, request *http.Request) {
+	body, err := req.HandleBody[ProductUpdate](w, request)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	idStr := request.PathValue("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	product, err := handler.ProductRepository.Update(&models.Product{
+		Model:       gorm.Model{ID: uint(id)},
+		Name:        body.Name,
+		Description: body.Description,
+		Images:      body.Images,
+		Quantity:    body.Quantity,
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	resp.Json(w, product, 201)
+
+}
+func (handler *ProductHandler) delete(w http.ResponseWriter, request *http.Request) {
+	idStr := request.PathValue("id")
+	id, _ := strconv.Atoi(idStr)
+
+	_, err := handler.ProductRepository.FindId(uint(id))
+	if err != nil {
+		resp.Json(w, "Карточка не найдена", http.StatusOK)
+		return
+	}
+	err = handler.ProductRepository.Delete(idStr)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	resp.Json(w, "Карточка удалена", http.StatusOK)
 }
 
-func NewHandler(router *http.ServeMux, deps HandlerDeps) {
-	hander := &Handler{
-		repo: deps.Repo,
+func (handler *ProductHandler) getById(w http.ResponseWriter, request *http.Request) {
+	phonNumber, ok := request.Context().Value(middleware.ContextPhoneNumber).(string)
+	if ok {
+		//редирект на страничку register
+		fmt.Println(phonNumber)
+	}
+	idStr := request.PathValue("id")
+	id, _ := strconv.Atoi(idStr)
+	getProduct, err := handler.ProductRepository.FindId(uint(id))
+	if err != nil {
+		resp.Json(w, "Карточка не найдена", http.StatusOK)
+		return
+	}
+	resp.Json(w, getProduct, http.StatusOK)
+
+}
+func (handler *ProductHandler) getAllProduct(w http.ResponseWriter, request *http.Request) {
+	phonNumber, ok := request.Context().Value(middleware.ContextPhoneNumber).(string)
+	if ok {
+		fmt.Println(phonNumber)
 	}
 
-	router.HandleFunc("POST /product", hander.Create())
-	router.HandleFunc("GET /product/{id}", hander.Get())
-	router.HandleFunc("PATCH /product/{id}", hander.Update())
-	router.HandleFunc("DELETE /product/{id}", hander.Delete())
-}
-
-func (h *Handler) Create() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		body, err := request.ParseBody[CreateRequest](w, r)
-		if err != nil {
-			return
-		}
-		product := NewProduct(body.Name, body.Description, body.Images)
-		createdProuct, err := h.repo.Create(product)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
-			return
-		}
-		response.WriteJSON(w, http.StatusCreated, createdProuct)
+	allprod, err := handler.ProductRepository.GetAllProd()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
-}
-
-func (h *Handler) Get() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		idStr := r.PathValue("id")
-		id, err := strconv.ParseUint(idStr, 10, 32)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		product, err := h.repo.GetByID(uint(id))
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusNotFound)
-			return
-		}
-		response.WriteJSON(w, http.StatusOK, product)
-	}
-}
-
-func (h *Handler) Update() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		body, err := request.ParseBody[UpdateRequest](w, r)
-		if err != nil {
-			return
-		}
-		idStr := r.PathValue("id")
-		id, err := strconv.ParseUint(idStr, 10, 32)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		_, err = h.repo.GetByID(uint(id))
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusNotFound)
-			return
-		}
-		updatedProduct, err := h.repo.Update(&Product{
-			Model:       gorm.Model{ID: uint(id)},
-			Name:        body.Name,
-			Description: body.Description,
-			Images:      body.Images,
-		})
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		response.WriteJSON(w, http.StatusOK, updatedProduct)
-	}
-}
-
-func (h *Handler) Delete() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		idStr := r.PathValue("id")
-		id, err := strconv.ParseUint(idStr, 10, 32)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		err = h.repo.Delete(uint(id))
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		response.WriteJSON(w, http.StatusNoContent, nil)
-	}
+	resp.Json(w, allprod, http.StatusOK)
 }
